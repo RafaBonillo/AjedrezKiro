@@ -19,9 +19,17 @@
   @media (prefers-reduced-motion: reduce) { .deco { animation:none; display:none; } }
   .wrap, h1 { position:relative; z-index:1; }
   .wrap { display:flex; flex-wrap:wrap; gap:16px; justify-content:center; align-items:flex-start; }
-  .left { --w:min(92vw,560px); width:var(--w); }
-  .board { width:var(--w); aspect-ratio:1; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); border:4px solid var(--accent); border-radius:8px; overflow:hidden; user-select:none; box-shadow:0 0 22px rgba(255,117,24,.45), 0 0 0 2px #000; }
-  .sq { position:relative; min-width:0; min-height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:calc(var(--w) / 8 * .78); line-height:1; cursor:pointer; }
+  .left { --w:min(92vw,560px); --bw:calc(var(--w) - 24px); width:var(--w); }
+  .left.noev { --bw:var(--w); }
+  .brow { display:flex; gap:8px; width:var(--w); }
+  .left.noev .ev { display:none; }
+  .ev { width:16px; flex:none; background:#14081d; border:2px solid var(--accent); border-radius:6px; position:relative; overflow:hidden; box-shadow:0 0 10px rgba(255,117,24,.4); }
+  #evw { position:absolute; left:0; right:0; bottom:0; height:50%; background:#fff3d1; transition:height .4s; }
+  .ev.flip #evw { bottom:auto; top:0; }
+  .info { font-size:12px; color:var(--muted); margin-top:8px; }
+  .sq.hint { box-shadow: inset 0 0 0 4px #4dd2ff, inset 0 0 14px #4dd2ff; }
+  .board { width:var(--bw); flex:none; aspect-ratio:1; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); border:4px solid var(--accent); border-radius:8px; overflow:hidden; user-select:none; box-shadow:0 0 22px rgba(255,117,24,.45), 0 0 0 2px #000; }
+  .sq { position:relative; min-width:0; min-height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:calc(var(--bw) / 8 * .78); line-height:1; cursor:pointer; }
   .lt { background:#f2a65a; } .dk { background:#3d1d57; }
   .sq.last::before { content:""; position:absolute; inset:0; background:rgba(255,230,0,.38); }
   .sq.sel::before { content:""; position:absolute; inset:0; background:rgba(125,255,60,.55); }
@@ -65,9 +73,9 @@
 <div class="deco d1">🦇</div><div class="deco d2">👻</div><div class="deco d3">🦇</div>
 <h1>🎃 AjedrezKiro ♞ 🕸️</h1>
 <div class="wrap">
-  <div class="left">
+  <div class="left" id="leftBox">
     <div class="bar"><div class="cap-row" id="capTop"></div><div class="clk" id="clkTop"></div></div>
-    <div class="board" id="board"></div>
+    <div class="brow"><div class="ev" id="ev"><div id="evw"></div></div><div class="board" id="board"></div></div>
     <div class="bar"><div class="cap-row" id="capBot"></div><div class="clk" id="clkBot"></div></div>
   </div>
   <div class="side">
@@ -81,7 +89,7 @@
       <label for="color">Tú juegas con</label>
       <select id="color"><option value="w">Blancas</option><option value="b">Negras</option></select>
       <label for="level">Nivel</label>
-      <select id="level"><option value="1">Fácil</option><option value="2" selected>Normal</option><option value="3">Difícil</option></select>
+      <select id="level"><option value="1">Fácil</option><option value="2" selected>Normal</option><option value="3">Difícil</option><option value="4">Maestro</option></select>
     </div>
     <label for="tc">Reloj</label>
     <select id="tc">
@@ -97,6 +105,12 @@
       <button id="undoBtn">Deshacer</button>
       <button id="flipBtn">Girar</button>
     </div>
+    <div class="btns">
+      <button id="hintBtn">💡 Pista</button>
+      <button id="sndBtn">🔊 Sonido</button>
+    </div>
+    <div class="info" id="evtxt"></div>
+    <div class="info" id="engine"></div>
     <div id="moves"></div>
   </div>
 </div>
@@ -104,6 +118,7 @@
 <div class="modal" id="promo"><div class="box"><div>Coronar a…</div><div class="row" id="promoRow"></div></div></div>
 
 <script src="engine.js"></script>
+<script src="sf.js"></script>
 <script>
 (function () {
   const G = { K: '\u265A\uFE0E', Q: '\u265B\uFE0E', R: '\u265C\uFE0E', B: '\u265D\uFE0E', N: '\u265E\uFE0E', P: '\u265F\uFE0E' };
@@ -112,7 +127,64 @@
   const $ = (id) => document.getElementById(id);
   const boardEl = $('board');
 
-  let hist, last, sel, targets, flip, over, busy, gen, pending, clk, flagged, lastTick;
+  let hist, last, sel, targets, flip, over, busy, gen, pending, clk, flagged, lastTick, hintSq = null, hintBusy = false, soundOn = true, audio = null;
+  const SF = window.SF;
+  // Nivel -> fuerza de Stockfish (Skill Level 0-20) y tiempo de pensar.
+  const LEVELS = { 1: { skill: 2, movetime: 150 }, 2: { skill: 9, movetime: 400 }, 3: { skill: 16, movetime: 800 }, 4: { skill: 20, movetime: 1500 } };
+
+  // ---- Sonidos ----
+  function ensureAudio() {
+    try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); if (audio.state === 'suspended') audio.resume(); } catch (e) { /* sin audio */ }
+  }
+  document.addEventListener('pointerdown', ensureAudio);
+  function sound(kind) {
+    if (!soundOn || !audio) return;
+    const t = audio.currentTime;
+    const T = (f, d, off, type, v) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = type || 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(v || 0.12, t + off);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + off + d);
+      o.connect(g); g.connect(audio.destination);
+      o.start(t + off); o.stop(t + off + d + 0.02);
+    };
+    if (kind === 'move') T(300, 0.09, 0, 'triangle');
+    else if (kind === 'cap') { T(180, 0.12, 0, 'sawtooth', 0.1); T(120, 0.14, 0.05, 'triangle'); }
+    else if (kind === 'check') { T(740, 0.12, 0, 'square', 0.07); T(740, 0.12, 0.14, 'square', 0.07); }
+    else if (kind === 'end') { T(440, 0.2, 0); T(330, 0.2, 0.2); T(220, 0.4, 0.4); }
+  }
+
+  // ---- Barra de evaluación (siempre desde el punto de vista de las blancas) ----
+  function setBar(v) {
+    if (!SF.ready) return;
+    let pct = 50, txt = '0.0';
+    if (v && v.fin) { pct = v.fin === 'w' ? 100 : v.fin === 'b' ? 0 : 50; txt = v.fin === 'w' ? '1-0' : v.fin === 'b' ? '0-1' : '\u00BD-\u00BD'; }
+    else if (v && v.mate != null) { pct = v.mate > 0 ? 100 : 0; txt = 'Mate en ' + Math.abs(v.mate) + ' (' + (v.mate > 0 ? 'blancas' : 'negras') + ')'; }
+    else if (v && v.cp != null) { pct = 100 / (1 + Math.exp(-v.cp / 300)); txt = (v.cp > 0 ? '+' : '') + (v.cp / 100).toFixed(1); }
+    $('evw').style.height = pct + '%';
+    $('evtxt').textContent = 'Evaluación: ' + txt;
+  }
+  function setEval(r, turn) {
+    const sg = turn === 'w' ? 1 : -1;
+    setBar(r.mate != null ? { mate: r.mate * sg } : { cp: (r.cp || 0) * sg });
+  }
+
+  // ---- Utilidades de jugadas ----
+  const movesList = () => hist.slice(1).map((h) => h.uci);
+  function fromUci(s, u) {
+    if (!u) return null;
+    const sq = (n) => (n.charCodeAt(0) - 97) + (8 - +n[1]) * 8;
+    const from = sq(u.slice(0, 2)), to = sq(u.slice(2, 4));
+    const m = Chess.allLegal(s).find((x) => x.from === from && x.to === to);
+    return m ? { m, promo: u[4] ? u[4].toUpperCase() : 'Q' } : null;
+  }
+  const keyOf = (s) => s.b.map((p) => p || '-').join('') + s.turn + s.cast.wK + s.cast.wQ + s.cast.bK + s.cast.bQ + s.ep;
+  function repeated() {
+    const k = keyOf(cur());
+    let n = 0;
+    for (const h of hist) if (keyOf(h.s) === k) n++;
+    return n >= 3;
+  }
 
   const cur = () => hist[hist.length - 1].s;
   const mode = () => $('mode').value;
@@ -157,11 +229,12 @@
   function newGame() {
     gen++;
     clk = { w: tcMs(), b: tcMs() }; flagged = null; lastTick = Date.now();
-    hist = [{ s: Chess.initState(), san: '', clk: { w: clk.w, b: clk.b } }];
-    last = null; sel = null; targets = []; over = false; busy = false; pending = null;
+    hist = [{ s: Chess.initState(), san: '', clk: { w: clk.w, b: clk.b }, uci: '' }];
+    last = null; sel = null; targets = []; over = false; busy = false; pending = null; hintSq = null;
     flip = mode() === 'ai' && player() === 'b';
     $('aiOpts').style.display = mode() === 'ai' ? '' : 'none';
     $('promo').classList.remove('on');
+    setBar({ cp: 0 });
     refresh();
     if (aiTurn()) aiMove();
   }
@@ -211,31 +284,76 @@
     const s = cur(), ns = Chess.apply(s, m, promo);
     tick();
     if (flagged) return;
-    hist.push({ s: ns, san: san(s, m, promo, ns), clk: { w: clk.w, b: clk.b } });
+    const isCap = !!s.b[m.to] || m.f === 'ep';
+    hist.push({ s: ns, san: san(s, m, promo, ns), clk: { w: clk.w, b: clk.b },
+      uci: sqName(m.from) + sqName(m.to) + (m.f === 'promo' ? (promo || 'Q').toLowerCase() : '') });
     last = { from: m.from, to: m.to };
-    sel = null; targets = [];
+    sel = null; targets = []; hintSq = null;
     refresh();
+    const st = Chess.status(ns);
+    sound(over ? 'end' : st === 'check' ? 'check' : isCap ? 'cap' : 'move');
     if (!over && aiTurn()) aiMove();
+    else if (!over && mode() === '2p') analyze();
   }
 
+  // Jugada de la máquina: Stockfish si está listo; si falla, el motor básico.
   function aiMove() {
     busy = true; refresh();
-    const g = gen;
-    setTimeout(() => {
+    const g = gen, s = cur(), lvl = +$('level').value;
+    const basic = () => {
+      setTimeout(() => {
+        if (g !== gen) return;
+        const m = Chess.bestMove(cur(), Math.min(lvl, 3));
+        busy = false;
+        if (m) commit(m, 'Q'); else refresh();
+      }, 60);
+    };
+    if (!SF.ready) { basic(); return; }
+    SF.search(movesList(), LEVELS[lvl]).then((r) => {
       if (g !== gen) return;
-      const m = Chess.bestMove(cur(), +$('level').value);
+      const f = fromUci(s, r.best);
+      if (!f) throw new Error('jugada no válida');
+      setEval(r, s.turn);
       busy = false;
-      if (m) commit(m, 'Q'); else refresh();
-    }, 60);
+      commit(f.m, f.promo);
+    }).catch(() => {
+      if (g !== gen) return;
+      $('engine').textContent = '\uD83E\uDDE0 Stockfish dejó de responder: uso el motor básico.';
+      basic();
+    });
+  }
+
+  // Evalúa la posición actual en segundo plano (para la barra).
+  function analyze() {
+    if (!SF.ready || over) return;
+    const g = gen, n = hist.length, s = cur();
+    SF.search(movesList(), { skill: 20, movetime: 250 }).then((r) => {
+      if (g === gen && n === hist.length) setEval(r, s.turn);
+    }).catch(() => {});
+  }
+
+  // Pista: la mejor jugada según Stockfish.
+  function hint() {
+    if (over || busy || pending || aiTurn() || hintBusy) return;
+    const g = gen, n = hist.length, s = cur();
+    hintBusy = true; $('hintBtn').disabled = true;
+    const done = (m) => {
+      hintBusy = false; $('hintBtn').disabled = false;
+      if (g === gen && n === hist.length && m) { hintSq = { from: m.from, to: m.to }; render(); }
+    };
+    if (SF.ready) {
+      SF.search(movesList(), { skill: 20, movetime: 900 }).then((r) => { const f = fromUci(s, r.best); done(f && f.m); })
+        .catch(() => done(Chess.bestMove(s, 3)));
+    } else setTimeout(() => done(Chess.bestMove(s, 3)), 30);
   }
 
   function undo() {
     if (busy || pending || hist.length < 2) return;
     do { hist.pop(); } while (mode() === 'ai' && hist.length > 1 && cur().turn !== player());
-    last = null; sel = null; targets = []; over = false; flagged = null;
+    last = null; sel = null; targets = []; over = false; flagged = null; hintSq = null;
     clk = { w: cur_clk().w, b: cur_clk().b }; lastTick = Date.now();
     refresh();
-    if (!over && aiTurn()) aiMove();
+    if (!over && aiTurn()) aiMove(); else analyze();
   }
 
   function cur_clk() { return hist[hist.length - 1].clk; }
@@ -252,6 +370,7 @@
       d.className = 'sq ' + ((r + c) % 2 ? 'dk' : 'lt');
       if (last && (sq === last.from || sq === last.to)) d.classList.add('last');
       if (sq === sel) d.classList.add('sel');
+      if (hintSq && (sq === hintSq.from || sq === hintSq.to)) d.classList.add('hint');
       if (sq === ksq) d.classList.add('chk');
       const t = targets.find((x) => x.to === sq);
       if (t) d.classList.add(s.b[sq] || t.f === 'ep' ? 'cap' : 'mv');
@@ -273,12 +392,18 @@
     const who = s.turn === 'w' ? 'blancas' : 'negras';
     const winner = s.turn === 'w' ? 'negras' : 'blancas';
     el.className = '';
-    over = !!flagged || !(st === 'ok' || st === 'check');
+    const rep = (st === 'ok' || st === 'check') && !flagged && repeated();
+    over = !!flagged || rep || !(st === 'ok' || st === 'check');
+    if (over) {
+      const fin = flagged ? (flagged === 'w' ? 'b' : 'w') : st === 'mate' ? (s.turn === 'w' ? 'b' : 'w') : 'd';
+      setBar({ fin });
+    }
     if (flagged) { el.textContent = '¡Se acabó el tiempo! Ganan las ' + (flagged === 'w' ? 'negras' : 'blancas') + '.'; el.className = 'end'; }
     else if (st === 'mate') { el.textContent = '¡Jaque mate! Ganan las ' + winner + '.'; el.className = 'end'; }
     else if (st === 'stalemate') { el.textContent = 'Tablas: rey ahogado.'; el.className = 'end'; }
     else if (st === 'fifty') { el.textContent = 'Tablas: regla de los 50 movimientos.'; el.className = 'end'; }
     else if (st === 'insufficient') { el.textContent = 'Tablas: faltan piezas para dar mate.'; el.className = 'end'; }
+    else if (rep) { el.textContent = 'Tablas: la misma posición 3 veces.'; el.className = 'end'; }
     else if (busy) el.textContent = 'La máquina está pensando…';
     else { el.textContent = (st === 'check' ? '¡Jaque! ' : '') + 'Turno de las ' + who + '.'; if (st === 'check') el.className = 'alert'; }
   }
@@ -304,6 +429,7 @@
     const html = (col) => miss[col].map((t) => '<span class="' + col + '">' + G[t] + '</span>').join('');
     // Fila de abajo = lado de quien mira el tablero; muestra las piezas que ESE lado ha perdido.
     const bottom = flip ? 'b' : 'w', top = flip ? 'w' : 'b';
+    $('ev').classList.toggle('flip', flip);
     $('capBot').innerHTML = html(bottom);
     $('capTop').innerHTML = html(top);
   }
@@ -311,12 +437,21 @@
   $('newBtn').onclick = newGame;
   $('undoBtn').onclick = undo;
   $('flipBtn').onclick = () => { flip = !flip; refresh(); };
+  $('hintBtn').onclick = hint;
+  $('sndBtn').onclick = () => { soundOn = !soundOn; $('sndBtn').textContent = soundOn ? '\uD83D\uDD0A Sonido' : '\uD83D\uDD07 Sonido'; };
   $('mode').onchange = newGame;
   $('color').onchange = newGame;
   $('tc').onchange = newGame;
   gen = 0;
-  newGame();
-  setInterval(tick, 200);
+  $('status').textContent = 'Cargando Stockfish…';
+  SF.init().then(() => {
+    $('engine').textContent = SF.ready
+      ? '\uD83E\uDDE0 Motor: ' + SF.name
+      : '\uD83E\uDDE0 Motor básico. Para Stockfish abre Jugar.bat.';
+    $('leftBox').classList.toggle('noev', !SF.ready);
+    newGame();
+    setInterval(tick, 200);
+  });
 })();
 </script>
 </body>
