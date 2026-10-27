@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AjedrezKiro ♞</title>
+<style>
+  :root { --bg:#0e0916; --panel:#1b1126; --line:#5b2a86; --text:#fbeedd; --muted:#c2a7d9; --accent:#ff7518; --slime:#7dff3c; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; color:var(--text); font-family:system-ui,Segoe UI,sans-serif; padding:16px;
+    background: radial-gradient(circle at 85% 8%, rgba(255,214,120,.35) 0, rgba(255,214,120,.12) 7%, transparent 14%),
+                radial-gradient(ellipse at 50% 120%, rgba(255,117,24,.22), transparent 60%), var(--bg); }
+  h1 { margin:0 0 12px; font-size:26px; text-align:center; color:var(--accent); font-family:Georgia,'Palatino Linotype',serif; font-style:italic; letter-spacing:1px; text-shadow:0 0 12px rgba(255,117,24,.7), 0 2px 0 #000; }
+  .deco { position:fixed; font-size:28px; pointer-events:none; z-index:0; opacity:.85; animation:fly 14s linear infinite; }
+  .deco.d2 { top:22%; font-size:22px; animation-duration:19s; animation-delay:-6s; }
+  .deco.d3 { top:62%; font-size:26px; animation-duration:24s; animation-delay:-12s; }
+  .deco.d1 { top:8%; }
+  @keyframes fly { from { transform:translateX(-10vw) translateY(0); } 50% { transform:translateX(50vw) translateY(-18px); } to { transform:translateX(110vw) translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .deco { animation:none; display:none; } }
+  .wrap, h1 { position:relative; z-index:1; }
+  .wrap { display:flex; flex-wrap:wrap; gap:16px; justify-content:center; align-items:flex-start; }
+  .left { --w:min(92vw,560px); width:var(--w); }
+  .board { width:var(--w); aspect-ratio:1; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); grid-template-rows:repeat(8,minmax(0,1fr)); border:4px solid var(--accent); border-radius:8px; overflow:hidden; user-select:none; box-shadow:0 0 22px rgba(255,117,24,.45), 0 0 0 2px #000; }
+  .sq { position:relative; min-width:0; min-height:0; overflow:hidden; display:flex; align-items:center; justify-content:center; font-size:calc(var(--w) / 8 * .78); line-height:1; cursor:pointer; }
+  .lt { background:#f2a65a; } .dk { background:#3d1d57; }
+  .sq.last::before { content:""; position:absolute; inset:0; background:rgba(255,230,0,.38); }
+  .sq.sel::before { content:""; position:absolute; inset:0; background:rgba(125,255,60,.55); }
+  .sq.chk::before { content:""; position:absolute; inset:0; background:radial-gradient(circle,rgba(255,0,0,.95),rgba(255,0,0,0) 72%); }
+  .sq.mv::after { content:""; position:absolute; width:30%; height:30%; border-radius:50%; background:rgba(125,255,60,.85); box-shadow:0 0 0 1.5px rgba(0,0,0,.6), 0 0 8px rgba(125,255,60,.8); }
+  .sq.cap::after { content:""; position:absolute; inset:4%; border-radius:50%; border:5px solid rgba(125,255,60,.85); box-shadow:0 0 8px rgba(125,255,60,.7); }
+  .pc { position:relative; z-index:1; }
+  .pc.w { color:#fff3d1; -webkit-text-stroke:1.2px #2a1200; text-shadow:0 2px 3px rgba(0,0,0,.5); }
+  .pc.b { color:#14081d; -webkit-text-stroke:1px #ffb066; text-shadow:0 0 6px rgba(255,117,24,.5); }
+  .sq i { position:absolute; font-style:normal; font-size:11px; font-family:system-ui,sans-serif; z-index:2; pointer-events:none; }
+  .lt i { color:rgba(61,29,87,.9); } .dk i { color:rgba(242,166,90,.9); }
+  .sq i.rk { top:2px; left:3px; } .sq i.fl { bottom:1px; right:3px; }
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:38px; }
+  .cap-row { height:28px; display:flex; align-items:center; font-size:20px; letter-spacing:1px; color:var(--muted); }
+  .cap-row .w { color:#fff3d1; -webkit-text-stroke:.6px #2a1200; } .cap-row .b { color:#14081d; -webkit-text-stroke:.6px #ffb066; }
+  .clk { font-family:ui-monospace,Consolas,monospace; font-size:20px; font-weight:700; padding:3px 12px; border-radius:8px; background:var(--panel); border:2px solid var(--line); color:var(--muted); min-width:92px; text-align:center; }
+  .clk.on { border-color:var(--accent); color:var(--text); box-shadow:0 0 10px rgba(255,117,24,.6); }
+  .clk.low { color:#ff6b6b; border-color:#ff3b3b; }
+  .clk.low.on { animation:blink 1s steps(2) infinite; }
+  .clk.off { display:none; }
+  @keyframes blink { 50% { background:#4a0f0f; } }
+  .side { width:min(92vw,280px); background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  #status { font-weight:600; min-height:44px; margin-bottom:10px; }
+  #status.alert { color:#ff8a8a; } #status.end { color:#ffd166; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  select, button { width:100%; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--text); font-size:14px; }
+  button { cursor:pointer; margin-top:8px; } button:hover:not(:disabled) { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#1a0a00; border:none; font-weight:700; }
+  button:disabled { opacity:.5; cursor:default; }
+  .btns { display:flex; gap:8px; } .btns button { margin-top:8px; }
+  #moves { margin-top:12px; max-height:220px; overflow:auto; font-size:13px; font-family:ui-monospace,Consolas,monospace; border-top:1px solid var(--line); padding-top:8px; }
+  #moves div { display:grid; grid-template-columns:28px 1fr 1fr; gap:4px; padding:1px 0; color:var(--muted); } #moves b { color:var(--text); font-weight:400; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; z-index:10; }
+  .modal.on { display:flex; }
+  .modal .box { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; text-align:center; }
+  .modal .row { display:flex; gap:10px; margin-top:8px; }
+  .modal button { width:72px; height:72px; font-size:48px; line-height:1; margin:0; background:#f2a65a; }
+</style>
+</head>
+<body>
+<div class="deco d1">🦇</div><div class="deco d2">👻</div><div class="deco d3">🦇</div>
+<h1>🎃 AjedrezKiro ♞ 🕸️</h1>
+<div class="wrap">
+  <div class="left">
+    <div class="bar"><div class="cap-row" id="capTop"></div><div class="clk" id="clkTop"></div></div>
+    <div class="board" id="board"></div>
+    <div class="bar"><div class="cap-row" id="capBot"></div><div class="clk" id="clkBot"></div></div>
+  </div>
+  <div class="side">
+    <div id="status"></div>
+    <label for="mode">Modo</label>
+    <select id="mode">
+      <option value="ai">Contra la máquina</option>
+      <option value="2p">Dos jugadores</option>
+    </select>
+    <div id="aiOpts">
+      <label for="color">Tú juegas con</label>
+      <select id="color"><option value="w">Blancas</option><option value="b">Negras</option></select>
+      <label for="level">Nivel</label>
+      <select id="level"><option value="1">Fácil</option><option value="2" selected>Normal</option><option value="3">Difícil</option></select>
+    </div>
+    <label for="tc">Reloj</label>
+    <select id="tc">
+      <option value="0">Sin reloj</option>
+      <option value="1">1 minuto</option>
+      <option value="3">3 minutos</option>
+      <option value="5" selected>5 minutos</option>
+      <option value="10">10 minutos</option>
+      <option value="15">15 minutos</option>
+    </select>
+    <button class="primary" id="newBtn">Nueva partida</button>
+    <div class="btns">
+      <button id="undoBtn">Deshacer</button>
+      <button id="flipBtn">Girar</button>
+    </div>
+    <div id="moves"></div>
+  </div>
+</div>
+
+<div class="modal" id="promo"><div class="box"><div>Coronar a…</div><div class="row" id="promoRow"></div></div></div>
+
+<script src="engine.js"></script>
+<script>
+(function () {
+  const G = { K: '\u265A\uFE0E', Q: '\u265B\uFE0E', R: '\u265C\uFE0E', B: '\u265D\uFE0E', N: '\u265E\uFE0E', P: '\u265F\uFE0E' };
+  const LETTER = { K: 'R', Q: 'D', R: 'T', B: 'A', N: 'C', P: '' };
+  const START = { P: 8, N: 2, B: 2, R: 2, Q: 1 };
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $('board');
+
+  let hist, last, sel, targets, flip, over, busy, gen, pending, clk, flagged, lastTick;
+
+  const cur = () => hist[hist.length - 1].s;
+  const mode = () => $('mode').value;
+  const player = () => $('color').value;
+  const tcMs = () => +$('tc').value * 60000;
+  const aiTurn = () => mode() === 'ai' && cur().turn !== player();
+  const sqName = (i) => 'abcdefgh'[i & 7] + (8 - (i >> 3));
+
+  function fmt(ms) {
+    const t = Math.max(0, Math.ceil(ms / 1000)), m = Math.floor(t / 60), s = t % 60;
+    return '\u23F1 ' + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function renderClocks() {
+    const on = tcMs() > 0, bottom = flip ? 'b' : 'w', top = flip ? 'w' : 'b';
+    for (const [id, col] of [['clkTop', top], ['clkBot', bottom]]) {
+      const el = $(id);
+      el.classList.toggle('off', !on);
+      if (!on) continue;
+      el.textContent = fmt(clk[col]);
+      el.classList.toggle('on', !over && hist.length > 1 && cur().turn === col);
+      el.classList.toggle('low', clk[col] < 30000);
+    }
+  }
+
+  function tick() {
+    const now = Date.now(), dt = now - lastTick;
+    lastTick = now;
+    if (tcMs() > 0 && !over && hist.length > 1) {
+      const t = cur().turn;
+      clk[t] -= dt;
+      if (clk[t] <= 0) {
+        clk[t] = 0; flagged = t; busy = false; pending = null; gen++;
+        $('promo').classList.remove('on');
+        refresh();
+        return;
+      }
+    }
+    renderClocks();
+  }
+
+  function newGame() {
+    gen++;
+    clk = { w: tcMs(), b: tcMs() }; flagged = null; lastTick = Date.now();
+    hist = [{ s: Chess.initState(), san: '', clk: { w: clk.w, b: clk.b } }];
+    last = null; sel = null; targets = []; over = false; busy = false; pending = null;
+    flip = mode() === 'ai' && player() === 'b';
+    $('aiOpts').style.display = mode() === 'ai' ? '' : 'none';
+    $('promo').classList.remove('on');
+    refresh();
+    if (aiTurn()) aiMove();
+  }
+
+  function click(sq) {
+    if (over || busy || pending || aiTurn()) return;
+    const s = cur(), p = s.b[sq];
+    if (sel !== null) {
+      const m = targets.find((x) => x.to === sq);
+      if (m) { choose(m); return; }
+    }
+    if (p && p[0] === s.turn) { sel = sq; targets = Chess.legal(s, sq); }
+    else { sel = null; targets = []; }
+    render();
+  }
+
+  function choose(m) {
+    if (m.f !== 'promo') { commit(m, 'Q'); return; }
+    pending = m;
+    const row = $('promoRow'); row.innerHTML = '';
+    for (const t of ['Q', 'R', 'B', 'N']) {
+      const b = document.createElement('button');
+      b.textContent = G[t];
+      b.style.color = cur().turn === 'w' ? '#fff' : '#1a1a1a';
+      b.style.webkitTextStroke = cur().turn === 'w' ? '1.2px #222' : '.8px #d8d8d8';
+      b.onclick = () => { $('promo').classList.remove('on'); const mv = pending; pending = null; commit(mv, t); };
+      row.appendChild(b);
+    }
+    $('promo').classList.add('on');
+  }
+
+  function san(s, m, promo, ns) {
+    const p = s.b[m.from];
+    let txt;
+    if (m.f === 'cK') txt = 'O-O';
+    else if (m.f === 'cQ') txt = 'O-O-O';
+    else {
+      const cap = s.b[m.to] || m.f === 'ep';
+      txt = LETTER[p[1]] + sqName(m.from) + (cap ? 'x' : '-') + sqName(m.to);
+      if (m.f === 'promo') txt += '=' + LETTER[promo];
+    }
+    const st = Chess.status(ns);
+    return txt + (st === 'mate' ? '#' : st === 'check' ? '+' : '');
+  }
+
+  function commit(m, promo) {
+    const s = cur(), ns = Chess.apply(s, m, promo);
+    tick();
+    if (flagged) return;
+    hist.push({ s: ns, san: san(s, m, promo, ns), clk: { w: clk.w, b: clk.b } });
+    last = { from: m.from, to: m.to };
+    sel = null; targets = [];
+    refresh();
+    if (!over && aiTurn()) aiMove();
+  }
+
+  function aiMove() {
+    busy = true; refresh();
+    const g = gen;
+    setTimeout(() => {
+      if (g !== gen) return;
+      const m = Chess.bestMove(cur(), +$('level').value);
+      busy = false;
+      if (m) commit(m, 'Q'); else refresh();
+    }, 60);
+  }
+
+  function undo() {
+    if (busy || pending || hist.length < 2) return;
+    do { hist.pop(); } while (mode() === 'ai' && hist.length > 1 && cur().turn !== player());
+    last = null; sel = null; targets = []; over = false; flagged = null;
+    clk = { w: cur_clk().w, b: cur_clk().b }; lastTick = Date.now();
+    refresh();
+    if (!over && aiTurn()) aiMove();
+  }
+
+  function cur_clk() { return hist[hist.length - 1].clk; }
+
+  function refresh() { render(); updateStatus(); renderMoves(); renderCaptured(); renderClocks(); $('undoBtn').disabled = busy || hist.length < 2; }
+
+  function render() {
+    const s = cur(), st = Chess.status(s);
+    const ksq = st === 'check' || st === 'mate' ? Chess.kingSq(s.b, s.turn) : -1;
+    boardEl.innerHTML = '';
+    for (let i = 0; i < 64; i++) {
+      const sq = flip ? 63 - i : i, r = sq >> 3, c = sq & 7;
+      const d = document.createElement('div');
+      d.className = 'sq ' + ((r + c) % 2 ? 'dk' : 'lt');
+      if (last && (sq === last.from || sq === last.to)) d.classList.add('last');
+      if (sq === sel) d.classList.add('sel');
+      if (sq === ksq) d.classList.add('chk');
+      const t = targets.find((x) => x.to === sq);
+      if (t) d.classList.add(s.b[sq] || t.f === 'ep' ? 'cap' : 'mv');
+      const p = s.b[sq];
+      if (p) {
+        const sp = document.createElement('span');
+        sp.className = 'pc ' + p[0]; sp.textContent = G[p[1]];
+        d.appendChild(sp);
+      }
+      if (i % 8 === 0) { const e = document.createElement('i'); e.className = 'rk'; e.textContent = 8 - r; d.appendChild(e); }
+      if (i >= 56) { const e = document.createElement('i'); e.className = 'fl'; e.textContent = 'abcdefgh'[c]; d.appendChild(e); }
+      d.onclick = () => click(sq);
+      boardEl.appendChild(d);
+    }
+  }
+
+  function updateStatus() {
+    const s = cur(), st = Chess.status(s), el = $('status');
+    const who = s.turn === 'w' ? 'blancas' : 'negras';
+    const winner = s.turn === 'w' ? 'negras' : 'blancas';
+    el.className = '';
+    over = !!flagged || !(st === 'ok' || st === 'check');
+    if (flagged) { el.textContent = '¡Se acabó el tiempo! Ganan las ' + (flagged === 'w' ? 'negras' : 'blancas') + '.'; el.className = 'end'; }
+    else if (st === 'mate') { el.textContent = '¡Jaque mate! Ganan las ' + winner + '.'; el.className = 'end'; }
+    else if (st === 'stalemate') { el.textContent = 'Tablas: rey ahogado.'; el.className = 'end'; }
+    else if (st === 'fifty') { el.textContent = 'Tablas: regla de los 50 movimientos.'; el.className = 'end'; }
+    else if (st === 'insufficient') { el.textContent = 'Tablas: faltan piezas para dar mate.'; el.className = 'end'; }
+    else if (busy) el.textContent = 'La máquina está pensando…';
+    else { el.textContent = (st === 'check' ? '¡Jaque! ' : '') + 'Turno de las ' + who + '.'; if (st === 'check') el.className = 'alert'; }
+  }
+
+  function renderMoves() {
+    const box = $('moves'); box.innerHTML = '';
+    for (let i = 1; i < hist.length; i += 2) {
+      const row = document.createElement('div');
+      row.innerHTML = '<span>' + ((i + 1) / 2) + '.</span><b>' + hist[i].san + '</b><b>' + (hist[i + 1] ? hist[i + 1].san : '') + '</b>';
+      box.appendChild(row);
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function renderCaptured() {
+    const b = cur().b, miss = { w: [], b: [] };
+    for (const col of ['w', 'b']) {
+      for (const t of ['Q', 'R', 'B', 'N', 'P']) {
+        const have = b.filter((p) => p === col + t).length;
+        for (let k = 0; k < Math.max(0, START[t] - have); k++) miss[col].push(t);
+      }
+    }
+    const html = (col) => miss[col].map((t) => '<span class="' + col + '">' + G[t] + '</span>').join('');
+    // Fila de abajo = lado de quien mira el tablero; muestra las piezas que ESE lado ha perdido.
+    const bottom = flip ? 'b' : 'w', top = flip ? 'w' : 'b';
+    $('capBot').innerHTML = html(bottom);
+    $('capTop').innerHTML = html(top);
+  }
+
+  $('newBtn').onclick = newGame;
+  $('undoBtn').onclick = undo;
+  $('flipBtn').onclick = () => { flip = !flip; refresh(); };
+  $('mode').onchange = newGame;
+  $('color').onchange = newGame;
+  $('tc').onchange = newGame;
+  gen = 0;
+  newGame();
+  setInterval(tick, 200);
+})();
+</script>
+</body>
+</html>
